@@ -38,6 +38,30 @@ jobs:
           pending_count=0
           running_count=0
 
+          echo "===== Parsed num_jobs by job type ====="
+
+          declare -A job_type_counts
+          total_jobs=0
+
+          # First scan: count job types from "a=...+num_jobs=..."
+          while read -r line; do
+            if [[ $line == *"a="* && $line == *"+num_jobs="* ]]; then
+              job_type=$(echo "$line" | sed -n 's/.*a=\([^+ ]*\).*/\1/p')
+              num_jobs=$(echo "$line" | sed -n 's/.*+num_jobs=\([0-9]\+\).*/\1/p')
+              if [[ -n "$job_type" && -n "$num_jobs" ]]; then
+                job_type_counts["$job_type"]=$(( ${job_type_counts["$job_type"]} + num_jobs ))
+                total_jobs=$(( total_jobs + num_jobs ))
+              fi
+            fi
+          done <<< "$job_list"
+
+          for jt in "${!job_type_counts[@]}"; do
+            printf "%-30s %d\n" "$jt jobs:" "${job_type_counts[$jt]}"
+          done
+          printf "%-30s %d\n" "Total num_jobs:" $total_jobs
+          echo ""
+
+          # Second scan: print table of jobs + Held/Pending/Running counts
           printf "\n%-10s %-100s %-10s %-10s %-20s\n" "JobID" "JobName" "State" "Time" "Nodelist"
 
           while read -r line; do
@@ -59,6 +83,7 @@ jobs:
             esac
           done <<< "$job_list"
 
+          echo ""
           printf "%-30s %d\n" "Held jobs:" $held_count
           printf "%-30s %d\n" "Pending jobs:" $pending_count
           printf "%-30s %d\n" "Running jobs:" $running_count
