@@ -32,7 +32,6 @@ jobs:
         id: hpcc
         run: |
           set -e
-          # Use pipe delimiter and no width limits to avoid truncation
           sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
           job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
 
@@ -42,9 +41,10 @@ jobs:
           running_count=0
           declare -A category_counts
           declare -A category_num_jobs
+          declare -A category_state_counts
           total_num_jobs=0
 
-          # --- First pass: compute summaries (states + categories + num_jobs) ---
+          # --- First pass: compute summaries ---
           while IFS='|' read -r job_id job_name state time nodelist; do
             # Count job states
             if [[ "$nodelist" == *"Held"* ]]; then
@@ -55,11 +55,15 @@ jobs:
               PD) pending_count=$((pending_count + 1)) ;;
             esac
 
-            # Parse category from a=<category> (stop at '+' or whitespace)
+            # Parse category
             if [[ "$job_name" == *"a="* ]]; then
               job_type=$(printf '%s' "$job_name" | sed -n 's/.*a=\([^+[:space:]]*\).*/\1/p')
               if [[ -n "$job_type" ]]; then
                 category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
+
+                # Track by job state (Running, Pending, etc.)
+                category_state_counts["$job_type|$state"]=$(( ${category_state_counts["$job_type|$state"]:-0} + 1 ))
+
                 # Parse num_jobs if present
                 num_jobs=$(printf '%s' "$job_name" | sed -n 's/.*num_jobs=\([0-9][0-9]*\).*/\1/p')
                 if [[ -n "$num_jobs" ]]; then
@@ -90,11 +94,29 @@ jobs:
           printf "%-30s %d\n" "Total num_jobs:" "$total_num_jobs"
           echo ""
 
+          echo "===== Jobs by category and state ====="
+          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
+            printf "%-20s" "$jt:"
+            for s in R PD CF CG F TO NF S ST; do
+              count=${category_state_counts["$jt|$s"]}
+              if [[ -n "$count" ]]; then
+                case "$s" in
+                  R) label="Running" ;;
+                  PD) label="Pending" ;;
+                  *) label="$s" ;;
+                esac
+                printf "  %s=%d" "$label" "$count"
+              fi
+            done
+            echo ""
+          done
+          echo ""
+
           echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
           echo ""
           echo "===== Detailed Job Table ====="
 
-          # --- Second pass: print the detailed table ---
+          # --- Print detailed job table ---
           printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Nodelist/Reason"
           while IFS='|' read -r job_id job_name state time nodelist; do
             printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
