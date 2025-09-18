@@ -38,7 +38,7 @@ jobs:
           pending_count=0
           running_count=0
 
-          printf "\n%-10s %-30s %-10s %-10s %-20s\n" "JobID" "JobName" "State" "Time" "Nodelist"
+          printf "\n%-10s %-100s %-10s %-10s %-20s\n" "JobID" "JobName" "State" "Time" "Nodelist"
 
           while read -r line; do
             if [[ $line == JOBID* ]]; then
@@ -49,7 +49,7 @@ jobs:
             state=$(echo "$line" | awk '{print $3}')
             time=$(echo "$line" | awk '{print $4}')
             nodelist=$(echo "$line" | awk '{print $5}')
-            printf "%-10s %-300s %-10s %-10s %-10s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
+            printf "%-10s %-100s %-10s %-10s %-10s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
             if [[ "$nodelist" == *"Held"* ]]; then
               held_count=$((held_count + 1))
             fi
