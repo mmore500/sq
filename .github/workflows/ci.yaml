@@ -20,7 +20,7 @@ jobs:
         id: hpcc
         run: |
           set -e
-          sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF'
+          sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
           job_list=$(squeue -u $USER -o "%.18i %.25j %.2t %.10M %.20R %.30r")
           held_count=0
           pending_count=0
@@ -53,7 +53,6 @@ jobs:
 
           echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
           EOF
-        shell: bash | tee job_status.txt
 
       - name: Generate webpage
         run: |
