@@ -3,7 +3,7 @@ name: HPCC Job Monitor
 on:
   push:
     branches:
-      - main   # change if your default branch is different
+      - master
   schedule:
     - cron: "*/5 * * * *"  # every 5 minutes
   workflow_dispatch:
