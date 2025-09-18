@@ -1,6 +1,9 @@
 name: HPCC Job Monitor
 
 on:
+  push:
+    branches:
+      - main   # change if your default branch is different
   schedule:
     - cron: "*/5 * * * *"  # every 5 minutes
   workflow_dispatch:
@@ -57,10 +60,16 @@ jobs:
       - name: Generate webpage
         run: |
           mkdir -p public
-          echo "Last Updated: $(TZ=America/New_York date)" > public/index.html
-          echo "<pre>" >> public/index.html
-          cat job_status.txt >> public/index.html
-          echo "</pre>" >> public/index.html
+          {
+            echo "<!DOCTYPE html>"
+            echo "<html><head><meta http-equiv=\"refresh\" content=\"60\">"
+            echo "<title>HPCC Job Monitor</title></head><body>"
+            echo "<h3>Last Updated: $(TZ=America/New_York date)</h3>"
+            echo "<pre>"
+            cat job_status.txt
+            echo "</pre>"
+            echo "</body></html>"
+          } > public/index.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
