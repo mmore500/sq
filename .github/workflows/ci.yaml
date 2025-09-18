@@ -34,20 +34,39 @@ jobs:
           set -e
           sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
           job_list=$(squeue -u $USER -o "%.18i %.100j %.2t %.10M %.20R %.30r")
+
+          # --- Counters ---
           held_count=0
           pending_count=0
           running_count=0
-
-          echo "===== Parsed num_jobs by job type ====="
-
           declare -A job_type_counts
           total_jobs=0
 
-          # First scan: count job types from "a=...+num_jobs=..."
+          # --- First pass: parse categories + states ---
           while read -r line; do
-            if [[ $line == *"a="* && $line == *"+num_jobs="* ]]; then
-              job_type=$(echo "$line" | sed -n 's/.*a=\([^+ ]*\).*/\1/p')
-              num_jobs=$(echo "$line" | sed -n 's/.*+num_jobs=\([0-9]\+\).*/\1/p')
+            if [[ $line == JOBID* ]]; then
+              continue
+            fi
+
+            # Extract fields
+            job_id=$(echo "$line" | awk '{print $1}')
+            job_name=$(echo "$line" | awk '{print $2}')
+            state=$(echo "$line" | awk '{print $3}')
+            nodelist=$(echo "$line" | awk '{print $5}')
+
+            # Count job states
+            if [[ "$nodelist" == *"Held"* ]]; then
+              held_count=$((held_count + 1))
+            fi
+            case "$state" in
+              R) running_count=$((running_count + 1)) ;;
+              PD) pending_count=$((pending_count + 1)) ;;
+            esac
+
+            # Parse job type a=...+num_jobs=...
+            if [[ "$job_name" == a=* ]]; then
+              job_type=$(echo "$job_name" | sed -n 's/.*a=\([^+ ]*\).*/\1/p')
+              num_jobs=$(echo "$job_name" | sed -n 's/.*+num_jobs=\([0-9]\+\).*/\1/p')
               if [[ -n "$job_type" && -n "$num_jobs" ]]; then
                 job_type_counts["$job_type"]=$(( ${job_type_counts["$job_type"]} + num_jobs ))
                 total_jobs=$(( total_jobs + num_jobs ))
@@ -55,15 +74,24 @@ jobs:
             fi
           done <<< "$job_list"
 
+          # --- Print summary at top ---
+          echo "===== Job Summary ====="
+          printf "%-30s %d\n" "Held jobs:" $held_count
+          printf "%-30s %d\n" "Pending jobs:" $pending_count
+          printf "%-30s %d\n" "Running jobs:" $running_count
+          echo ""
+          echo "===== num_jobs by category ====="
           for jt in "${!job_type_counts[@]}"; do
             printf "%-30s %d\n" "$jt jobs:" "${job_type_counts[$jt]}"
           done
           printf "%-30s %d\n" "Total num_jobs:" $total_jobs
           echo ""
+          echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
+          echo ""
+          echo "===== Detailed Job Table ====="
 
-          # Second scan: print table of jobs + Held/Pending/Running counts
+          # --- Print job table ---
           printf "\n%-10s %-100s %-10s %-10s %-20s\n" "JobID" "JobName" "State" "Time" "Nodelist"
-
           while read -r line; do
             if [[ $line == JOBID* ]]; then
               continue
@@ -74,21 +102,7 @@ jobs:
             time=$(echo "$line" | awk '{print $4}')
             nodelist=$(echo "$line" | awk '{print $5}')
             printf "%-10s %-100s %-10s %-10s %-20s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
-            if [[ "$nodelist" == *"Held"* ]]; then
-              held_count=$((held_count + 1))
-            fi
-            case "$state" in
-              R) running_count=$((running_count + 1)) ;;
-              PD) pending_count=$((pending_count + 1)) ;;
-            esac
           done <<< "$job_list"
-
-          echo ""
-          printf "%-30s %d\n" "Held jobs:" $held_count
-          printf "%-30s %d\n" "Pending jobs:" $pending_count
-          printf "%-30s %d\n" "Running jobs:" $running_count
-
-          echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
           EOF
 
       - name: Generate webpage
