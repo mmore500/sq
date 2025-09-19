@@ -65,7 +65,7 @@ jobs:
 
             # Parse category: ensure first a= is taken
             if [[ "$job_name" == *"a="* ]]; then
-              job_type=$(printf '%s' "$job_name" | sed -n 's/.*\ba=\([^+[:space:]]*\).*//; s/^.*a=\([^+[:space:]]*\).*$/\1/p;q')
+              job_type=$(printf '%s' "$job_name" | sed -n 's/.*a=\([^+[:space:]]*\).*$/\1/p')
               if [[ -n "$job_type" ]]; then
                 category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
                 category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
@@ -129,11 +129,24 @@ jobs:
       - name: Generate webpage
         run: |
           mkdir -p public
+          epoch_ms=$(date +%s000)
           {
             echo "<!DOCTYPE html>"
             echo "<html><head><meta http-equiv=\"refresh\" content=\"60\">"
             echo "<title>HPCC Job Monitor</title></head><body>"
-            echo "<h3>Last Updated: $(TZ=America/New_York date)</h3>"
+            echo "<h3 id=\"last-updated\">Last Updated: $(TZ=America/New_York date) (<span id='since'></span>)</h3>"
+            echo "<script>"
+            echo "  const lastUpdate = new Date($epoch_ms);"
+            echo "  function updateSince() {"
+            echo "    const now = new Date();"
+            echo "    const diffMs = now - lastUpdate;"
+            echo "    const mins = Math.floor(diffMs / 60000);"
+            echo "    const text = mins === 1 ? '1 minute since last update' : mins + ' minutes since last update';"
+            echo "    document.getElementById('since').textContent = text;"
+            echo "  }"
+            echo "  updateSince();"
+            echo "  setInterval(updateSince, 60000);"
+            echo "</script>"
             echo "<pre>"
             cat job_status.txt
             echo "</pre>"
