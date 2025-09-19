@@ -115,7 +115,8 @@ jobs:
           done
           echo ""
 
-          /usr/local/hpcc/bin/quota-scripts/userquota.py || echo "quota failed"
+          echo "===== Quota Usage ====="
+          /usr/local/hpcc/bin/quota-scripts/userquota.py | sed 's/\x1b\[[0-9;]*m//g' || echo "quota failed"
           echo ""
           echo "===== Detailed Job Table ====="
 
