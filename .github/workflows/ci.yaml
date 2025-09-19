@@ -30,12 +30,9 @@ jobs:
 
       - name: Run job script on HPCC
         id: hpcc
-        shell: bash
         run: |
           set -e
-          sshpass -p "${{ secrets.PASSWORD }}" \
-            ssh -tt -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" \
-            '$SHELL -lc "bash -l -s"' <<'EOF' | tee job_status.txt
+          sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
           job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
 
           # --- Counters ---
@@ -53,6 +50,7 @@ jobs:
           while IFS='|' read -r job_id job_name state time nodelist; do
             total_jobs_count=$((total_jobs_count + 1))
 
+            # Detect Held by user
             if [[ "$nodelist" == *"(JobHeldUser)"* ]]; then
               held_count=$((held_count + 1))
               category_label="Held"
@@ -65,15 +63,14 @@ jobs:
               esac
             fi
 
-            # Parse category: FIRST a= only (stop at + or whitespace)
+            # Parse category: ensure first a= is taken
             if [[ "$job_name" == *"a="* ]]; then
-              first_a=$(printf '%s' "$job_name" | grep -o 'a=[^[:space:]+]*' | head -n1 || true)
-              if [[ -n "$first_a" ]]; then
-                job_type="${first_a#a=}"
+              job_type=$(printf '%s' "$job_name" | sed -n 's/.*a=\([^+[:space:]]*\).*$/\1/p')
+              if [[ -n "$job_type" ]]; then
                 category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
                 category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
 
-                # Optional num_jobs sum
+                # Parse num_jobs if present
                 num_jobs=$(printf '%s' "$job_name" | sed -n 's/.*num_jobs=\([0-9][0-9]*\).*/\1/p')
                 if [[ -n "$num_jobs" ]]; then
                   category_num_jobs["$job_type"]=$(( ${category_num_jobs["$job_type"]:-0} + num_jobs ))
@@ -90,20 +87,20 @@ jobs:
           printf "%-22s %d\n" "Pending jobs:" "$pending_count"
           printf "%-22s %d\n" "Held jobs:" "$held_count"
           printf "%-22s %d\n" "Completing jobs:" "$completing_count"
-          echo
+          echo ""
 
           echo "===== Jobs by category (count of jobs) ====="
           for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
             printf "%-30s %d\n" "$jt:" "${category_counts[$jt]}"
           done
-          echo
+          echo ""
 
           echo "===== num_jobs by category ====="
           for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
             printf "%-30s %d\n" "$jt:" "${category_num_jobs[$jt]:-0}"
           done
           printf "%-30s %d\n" "Total num_jobs:" "$total_num_jobs"
-          echo
+          echo ""
 
           echo "===== Jobs by category and state ====="
           for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
@@ -114,20 +111,15 @@ jobs:
                 printf "  %s=%d" "$label" "$count"
               fi
             done
-            echo
+            echo ""
           done
-          echo
+          echo ""
 
-          # --- Raw quota output (login env; non-fatal with timeout) ---
-          echo "===== Quota ====="
-          if quota_raw=$(timeout 60s quota 2>/dev/null); then
-            echo "$quota_raw"
-          else
-            echo "(quota unavailable)"
-          fi
-          echo
-
+          echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
+          echo ""
           echo "===== Detailed Job Table ====="
+
+          # --- Print detailed job table ---
           printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Reason/Nodelist"
           while IFS='|' read -r job_id job_name state time nodelist; do
             printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
