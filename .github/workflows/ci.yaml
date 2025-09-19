@@ -35,104 +35,102 @@ jobs:
           sshpass -p "${{ secrets.PASSWORD }}" \
             ssh -tt -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" \
             '$SHELL -l' <<'EOF' | tee job_status.txt
-          job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
+job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
 
-          # --- Counters ---
-          running_count=0
-          pending_count=0
-          held_count=0
-          completing_count=0
-          total_jobs_count=0
-          declare -A category_counts
-          declare -A category_num_jobs
-          declare -A category_state_counts
-          total_num_jobs=0
+# --- Counters ---
+running_count=0
+pending_count=0
+held_count=0
+completing_count=0
+total_jobs_count=0
+declare -A category_counts
+declare -A category_num_jobs
+declare -A category_state_counts
+total_num_jobs=0
 
-          # --- First pass: compute summaries ---
-          while IFS='|' read -r job_id job_name state time nodelist; do
-            total_jobs_count=$((total_jobs_count + 1))
+# --- First pass: compute summaries ---
+while IFS='|' read -r job_id job_name state time nodelist; do
+  total_jobs_count=$((total_jobs_count + 1))
 
-            # Detect Held by user
-            if [[ "$nodelist" == *"(JobHeldUser)"* ]]; then
-              held_count=$((held_count + 1))
-              category_label="Held"
-            else
-              case "$state" in
-                R)  running_count=$((running_count + 1)); category_label="Running" ;;
-                PD) pending_count=$((pending_count + 1)); category_label="Pending" ;;
-                CG) completing_count=$((completing_count + 1)); category_label="Completing" ;;
-                *)  category_label="$state" ;;
-              esac
-            fi
+  if [[ "$nodelist" == *"(JobHeldUser)"* ]]; then
+    held_count=$((held_count + 1))
+    category_label="Held"
+  else
+    case "$state" in
+      R)  running_count=$((running_count + 1)); category_label="Running" ;;
+      PD) pending_count=$((pending_count + 1)); category_label="Pending" ;;
+      CG) completing_count=$((completing_count + 1)); category_label="Completing" ;;
+      *)  category_label="$state" ;;
+    esac
+  fi
 
-            # Parse category: ensure the FIRST a= is used
-            if [[ "$job_name" == *"a="* ]]; then
-              first_a=$(printf '%s' "$job_name" | grep -o 'a=[^+[:space:]]*' | head -n1 || true)
-              if [[ -n "$first_a" ]]; then
-                job_type="${first_a#a=}"
-                category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
-                category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
+  if [[ "$job_name" == *"a="* ]]; then
+    # match first occurrence of a= followed by no + or whitespace
+    first_a=$(printf '%s' "$job_name" | grep -o 'a=[^[:space:]+]*' | head -n1 || true)
+    if [[ -n "$first_a" ]]; then
+      job_type="${first_a#a=}"
+      category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
+      category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
 
-                # Parse num_jobs if present (sum them)
-                num_jobs=$(printf '%s' "$job_name" | sed -n 's/.*num_jobs=\([0-9][0-9]*\).*/\1/p')
-                if [[ -n "$num_jobs" ]]; then
-                  category_num_jobs["$job_type"]=$(( ${category_num_jobs["$job_type"]:-0} + num_jobs ))
-                  total_num_jobs=$(( total_num_jobs + num_jobs ))
-                fi
-              fi
-            fi
-          done <<< "$job_list"
+      num_jobs=$(printf '%s' "$job_name" | sed -n 's/.*num_jobs=\([0-9][0-9]*\).*/\1/p')
+      if [[ -n "$num_jobs" ]]; then
+        category_num_jobs["$job_type"]=$(( ${category_num_jobs["$job_type"]:-0} + num_jobs ))
+        total_num_jobs=$(( total_num_jobs + num_jobs ))
+      fi
+    fi
+  fi
+done <<< "$job_list"
 
-          # --- Print summary at the top ---
-          echo "===== Job Summary ====="
-          printf "%-22s %d\n" "Total jobs:" "$total_jobs_count"
-          printf "%-22s %d\n" "Running jobs:" "$running_count"
-          printf "%-22s %d\n" "Pending jobs:" "$pending_count"
-          printf "%-22s %d\n" "Held jobs:" "$held_count"
-          printf "%-22s %d\n" "Completing jobs:" "$completing_count"
-          echo ""
+# --- Print summary at the top ---
+echo "===== Job Summary ====="
+printf "%-22s %d\n" "Total jobs:" "$total_jobs_count"
+printf "%-22s %d\n" "Running jobs:" "$running_count"
+printf "%-22s %d\n" "Pending jobs:" "$pending_count"
+printf "%-22s %d\n" "Held jobs:" "$held_count"
+printf "%-22s %d\n" "Completing jobs:" "$completing_count"
+echo
 
-          echo "===== Jobs by category (count of jobs) ====="
-          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
-            printf "%-30s %d\n" "$jt:" "${category_counts[$jt]}"
-          done
-          echo ""
+echo "===== Jobs by category (count of jobs) ====="
+for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
+  printf "%-30s %d\n" "$jt:" "${category_counts[$jt]}"
+done
+echo
 
-          echo "===== num_jobs by category ====="
-          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
-            printf "%-30s %d\n" "$jt:" "${category_num_jobs[$jt]:-0}"
-          done
-          printf "%-30s %d\n" "Total num_jobs:" "$total_num_jobs"
-          echo ""
+echo "===== num_jobs by category ====="
+for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
+  printf "%-30s %d\n" "$jt:" "${category_num_jobs[$jt]:-0}"
+done
+printf "%-30s %d\n" "Total num_jobs:" "$total_num_jobs"
+echo
 
-          echo "===== Jobs by category and state ====="
-          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
-            printf "%-20s" "$jt:"
-            for label in Running Pending Held Completing; do
-              count=${category_state_counts["$jt|$label"]}
-              if [[ -n "$count" ]]; then
-                printf "  %s=%d" "$label" "$count"
-              fi
-            done
-            echo ""
-          done
-          echo ""
+echo "===== Jobs by category and state ====="
+for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
+  printf "%-20s" "$jt:"
+  for label in Running Pending Held Completing; do
+    count=${category_state_counts["$jt|$label"]}
+    if [[ -n "$count" ]]; then
+      printf "  %s=%d" "$label" "$count"
+    fi
+  done
+  echo
+done
+echo
 
-          # --- Raw quota output (via user login shell) ---
-          echo "===== Quota ====="
-          if quota_raw=$(timeout 60s quota 2>/dev/null); then
-            echo "$quota_raw"
-          else
-            echo "(quota unavailable)"
-          fi
-          echo ""
+# --- Raw quota output (via user login shell) ---
+echo "===== Quota ====="
+if quota_raw=$(timeout 60s quota 2>/dev/null); then
+  echo "$quota_raw"
+else
+  echo "(quota unavailable)"
+fi
+echo
 
-          echo "===== Detailed Job Table ====="
-          printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Reason/Nodelist"
-          while IFS='|' read -r job_id job_name state time nodelist; do
-            printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
-          done <<< "$job_list"
-          EOF
+echo "===== Detailed Job Table ====="
+printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Reason/Nodelist"
+while IFS='|' read -r job_id job_name state time nodelist; do
+  printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
+done <<< "$job_list"
+EOF
 
       - name: Generate webpage
         run: |
