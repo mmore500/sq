@@ -40,6 +40,7 @@ jobs:
           pending_count=0
           held_count=0
           completing_count=0
+          total_jobs_count=0
           declare -A category_counts
           declare -A category_num_jobs
           declare -A category_state_counts
@@ -47,6 +48,8 @@ jobs:
 
           # --- First pass: compute summaries ---
           while IFS='|' read -r job_id job_name state time nodelist; do
+            total_jobs_count=$((total_jobs_count + 1))
+
             # Detect Held by user
             if [[ "$nodelist" == *"(JobHeldUser)"* ]]; then
               held_count=$((held_count + 1))
@@ -60,9 +63,9 @@ jobs:
               esac
             fi
 
-            # Parse category
+            # Parse category: ensure first a= is taken
             if [[ "$job_name" == *"a="* ]]; then
-              job_type=$(printf '%s' "$job_name" | sed -n 's/.*a=\([^+[:space:]]*\).*/\1/p')
+              job_type=$(printf '%s' "$job_name" | sed -n 's/.*\ba=\([^+[:space:]]*\).*//; s/^.*a=\([^+[:space:]]*\).*$/\1/p;q')
               if [[ -n "$job_type" ]]; then
                 category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
                 category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
@@ -79,6 +82,7 @@ jobs:
 
           # --- Print summary at the top ---
           echo "===== Job Summary ====="
+          printf "%-22s %d\n" "Total jobs:" "$total_jobs_count"
           printf "%-22s %d\n" "Running jobs:" "$running_count"
           printf "%-22s %d\n" "Pending jobs:" "$pending_count"
           printf "%-22s %d\n" "Held jobs:" "$held_count"
