@@ -32,7 +32,9 @@ jobs:
         id: hpcc
         run: |
           set -e
-          sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
+          sshpass -p "${{ secrets.PASSWORD }}" \
+            ssh -tt -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" \
+            '$SHELL -l' <<'EOF' | tee job_status.txt
           job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
 
           # --- Counters ---
@@ -116,9 +118,9 @@ jobs:
           done
           echo ""
 
-          # --- Raw quota output ---
+          # --- Raw quota output (via user login shell) ---
           echo "===== Quota ====="
-          if quota_raw=$(timeout 60s bash -lc "quota" 2>/dev/null); then
+          if quota_raw=$(timeout 60s quota 2>/dev/null); then
             echo "$quota_raw"
           else
             echo "(quota unavailable)"
