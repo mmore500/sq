@@ -115,8 +115,16 @@ jobs:
           done
           echo ""
 
-          echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
+          # --- Robust quota retrieval (1 hop further to dev-amd24) ---
+          echo "Quota:"
+          quota_output=$(timeout 20s ssh -o ConnectTimeout=10 dev-amd24 "bash -i -c 'quota'" 2>/dev/null | grep -o '[0-9]\+%' | tr '\n' ' ')
+          if [[ -n "$quota_output" ]]; then
+            echo "  $quota_output"
+          else
+            echo "  (quota unavailable)"
+          fi
           echo ""
+
           echo "===== Detailed Job Table ====="
 
           # --- Print detailed job table ---
