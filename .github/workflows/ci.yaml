@@ -115,7 +115,7 @@ jobs:
           done
           echo ""
 
-          echo "Quota: " $(bash -i -c "quota" | grep -o '[^ ]\{2,\}%' | tr '\n' ' ')
+          echo "Quota: " $(/usr/local/hpcc/bin/quota-scripts/userquota.py)
           echo ""
           echo "===== Detailed Job Table ====="
 
