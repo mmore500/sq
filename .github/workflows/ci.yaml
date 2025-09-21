@@ -136,6 +136,8 @@ jobs:
             echo "<html><head><meta http-equiv=\"refresh\" content=\"60\">"
             echo "<title>HPCC Job Monitor</title></head><body>"
             echo "<h3 id=\"last-updated\">Updated: $(TZ=America/New_York date) (<span id='since'></span>)</h3>"
+            echo '<a href="https://github.com/mmore500/sq">source</a>'
+            echo '<a href="https://github.com/mmore500/sq/actions/workflows/ci.yaml">action</a>'
             echo "<script>"
             echo "  const lastUpdate = new Date($epoch_ms);"
             echo "  function updateSince() {"
