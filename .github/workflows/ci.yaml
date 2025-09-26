@@ -40,7 +40,7 @@ jobs:
           pending_count=0
           held_count=0
           completing_count=0
-          total_jobs_count=0
+          total_jobs_count=-1  # fix off-by-one
           declare -A category_counts
           declare -A category_num_jobs
           declare -A category_state_counts
@@ -133,7 +133,7 @@ jobs:
           PUSHOVER_USER: ${{ secrets.PUSHOVER_USER_KEY }}
         run: |
           set -euo pipefail
-          python3 <<-'PY' > quota_alert.txt
+          python3 <<-'PY'
           	import re
           	rows = []
           	with open("job_status.txt", encoding="utf-8") as fh:
@@ -154,7 +154,7 @@ jobs:
           	        directory = parts[0]
           	
           	        def extract_pct(value: str) -> float:
-          	            match = re.search(r"([0-9]+(?:\\.[0-9]+)?)%", value)
+          	            match = re.search(r"([0-9]+(\.[0-9]+)?)%", value)
           	            return float(match.group(1)) if match else 0.0
           	
           	        space_pct = extract_pct(parts[4])
@@ -166,7 +166,8 @@ jobs:
           	    lines = ["Quota usage warning:"]
           	    for directory, space_pct, files_pct in rows:
           	        lines.append(f"{directory}: space {space_pct:.1f}% | files {files_pct:.1f}%")
-          	    print("\n".join(lines))
+          	    with open("quota_alert.txt", "w") as f:
+                    print("\n".join(lines), file=f)
           	PY
           if [ -s quota_alert.txt ]; then
             message=$(cat quota_alert.txt)
