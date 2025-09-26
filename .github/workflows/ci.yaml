@@ -133,7 +133,7 @@ jobs:
           PUSHOVER_USER: ${{ secrets.PUSHOVER_USER_KEY }}
         run: |
           set -euo pipefail
-          python3 <<-'PY' > quota_alert.txt
+          python3 <<-'PY'
           	import re
           	rows = []
           	with open("job_status.txt", encoding="utf-8") as fh:
@@ -167,7 +167,8 @@ jobs:
           	    lines = ["Quota usage warning:"]
           	    for directory, space_pct, files_pct in rows:
           	        lines.append(f"{directory}: space {space_pct:.1f}% | files {files_pct:.1f}%")
-          	    print("\n".join(lines))
+          	    with open("quota_alert.txt", "w") as f:
+                    print("\n".join(lines), file=f)
           	PY
           if [ -s quota_alert.txt ]; then
             message=$(cat quota_alert.txt)
