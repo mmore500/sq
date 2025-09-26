@@ -127,6 +127,62 @@ jobs:
           done <<< "$job_list"
           EOF
 
+      - name: Parse quota usage and notify via Pushover
+        if: ${{ secrets.PUSHOVER_APP_TOKEN != '' && secrets.PUSHOVER_USER_KEY != '' }}
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER_KEY }}
+        run: |
+          set -euo pipefail
+          python3 <<-'PY' > quota_alert.txt
+          	import re
+          	rows = []
+          	with open("job_status.txt", encoding="utf-8") as fh:
+          	    in_quota = False
+          	    for line in fh:
+          	        if line.startswith("===== Quota Usage"):
+          	            in_quota = True
+          	            continue
+          	        if not in_quota:
+          	            continue
+          	        if line.startswith("===== ") and "Detailed Job Table" in line:
+          	            break
+          	        if not line.startswith("|"):
+          	            continue
+          	        parts = [part.strip() for part in line.strip().split("|")[1:-1]]
+          	        if len(parts) < 9:
+          	            continue
+          	        directory = parts[0]
+          	
+          	        def extract_pct(value: str) -> float:
+          	            match = re.search(r"([0-9]+(?:\\.[0-9]+)?)%", value)
+          	            return float(match.group(1)) if match else 0.0
+          	
+          	        space_pct = extract_pct(parts[4])
+          	        files_pct = extract_pct(parts[8])
+          	        if directory and (space_pct >= 70 or files_pct >= 70):
+          	            rows.append((directory, space_pct, files_pct))
+          	
+          	if rows:
+          	    lines = ["Quota usage warning:"]
+          	    for directory, space_pct, files_pct in rows:
+          	        lines.append(f"{directory}: space {space_pct:.1f}% | files {files_pct:.1f}%")
+          	    print("\n".join(lines))
+          	PY
+          if [ -s quota_alert.txt ]; then
+            message=$(cat quota_alert.txt)
+            echo "Quota threshold exceeded. Sending Pushover notification."
+            echo "${message}"
+            curl -fsS \
+              --form-string "token=${PUSHOVER_TOKEN}" \
+              --form-string "user=${PUSHOVER_USER}" \
+              --form-string "title=HPCC quota usage warning" \
+              --form-string "message=${message}" \
+              https://api.pushover.net/1/messages.json
+          else
+            echo "No quota metrics exceeded the threshold."
+          fi
+
       - name: Generate webpage
         run: |
           mkdir -p public
