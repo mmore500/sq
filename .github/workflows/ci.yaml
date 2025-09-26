@@ -128,7 +128,6 @@ jobs:
           EOF
 
       - name: Parse quota usage and notify via Pushover
-        if: ${{ secrets.PUSHOVER_APP_TOKEN != '' && secrets.PUSHOVER_USER_KEY != '' }}
         env:
           PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
           PUSHOVER_USER: ${{ secrets.PUSHOVER_USER_KEY }}
