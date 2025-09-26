@@ -159,6 +159,7 @@ jobs:
           	
           	        space_pct = extract_pct(parts[4])
           	        files_pct = extract_pct(parts[8])
+                    print(f"parsed {space_pct=} {files_pct=}")
           	        if directory and (space_pct >= 70 or files_pct >= 70):
           	            rows.append((directory, space_pct, files_pct))
           	
