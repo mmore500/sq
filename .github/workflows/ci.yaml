@@ -40,7 +40,7 @@ jobs:
           pending_count=0
           held_count=0
           completing_count=0
-          total_jobs_count=0
+          total_jobs_count=-1  # fix off-by-one
           declare -A category_counts
           declare -A category_num_jobs
           declare -A category_state_counts
