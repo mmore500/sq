@@ -216,7 +216,8 @@ jobs:
       - name: Create numbered page copies
         run: |
           for i in {0..999}; do
-            cp public/index.html public/${i}.html
+            cp public/index.html "public/${i}.html"
+            cp public/index.html "public/$(printf '%03d' "$i").html"
           done
 
       - name: Upload artifact for GitHub Pages
