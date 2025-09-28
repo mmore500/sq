@@ -278,9 +278,7 @@ jobs:
           runtime_mean=""
           runtime_median=""
           if [ -n "$runtime_stats" ]; then
-            IFS='|' read -r runtime_max runtime_mean runtime_median <<EOF
-            $runtime_stats
-            EOF
+            IFS='|' read -r runtime_max runtime_mean runtime_median <<< "$runtime_stats"
             {
               echo "===== Runtime elapsed (nonzero) ====="
               printf "%-22s %s\n" "Max runtime elapsed:" "$runtime_max"
