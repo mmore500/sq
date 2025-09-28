@@ -167,8 +167,8 @@ jobs:
           	    lines = ["Quota usage warning:"]
           	    for directory, space_pct, files_pct in rows:
           	        lines.append(f"{directory}: space {space_pct:.1f}% | files {files_pct:.1f}%")
-                    with open("quota_alert.txt", "w") as f:
-                        print("\n".join(lines), file=f)
+                with open("quota_alert.txt", "w") as f:
+                    print("\n".join(lines), file=f)
           	PY
           if [ -s quota_alert.txt ]; then
             message=$(cat quota_alert.txt)
