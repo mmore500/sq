@@ -77,7 +77,8 @@ jobs:
 
             # Parse category: ensure first a= is taken
             if [[ "$job_name" == *"a="* ]]; then
-              job_type=$(printf '%s' "$job_name" | sed -n 's/.*a=\([^+[:space:]]*\).*$/\1/p')
+              job_type=${job_name#*a=}
+              job_type=${job_type%%[+[:space:]]*}
               if [[ -n "$job_type" ]]; then
                 category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
                 category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
