@@ -21,17 +21,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    if: github.event_name == 'pull_request'
+  actionlint:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Validate workflow files with actionlint
-        uses: rhysd/actionlint@v1
-
+      - uses: actions/checkout@v4
+      - name: Check workflow files
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
   fetch-jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
