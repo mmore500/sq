@@ -273,7 +273,7 @@ jobs:
                     format_seconds(median_val),
                 ]))
             """))')
-
+          echo "runtime_stats $runtime_stats"
           runtime_max=""
           runtime_mean=""
           runtime_median=""
