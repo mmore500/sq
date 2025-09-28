@@ -188,124 +188,113 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p public
-          runtime_stats=$(python3 -c 'from textwrap import dedent; exec(dedent("""
-            import logging
-            import re
-            import statistics
-            from pathlib import Path
+          runtime_stats=$(python3 <<'PY'
+          import logging
+          import re
+          import statistics
+          from pathlib import Path
 
-            logging.basicConfig(level=logging.INFO, format="runtime_stats:%(levelname)s:%(message)s")
-            logger = logging.getLogger("runtime_stats")
+          logging.basicConfig(level=logging.INFO, format="runtime_stats:%(levelname)s:%(message)s")
+          logger = logging.getLogger("runtime_stats")
 
-            def parse_time_to_seconds(time_str: str):
-                """Parse SLURM-style elapsed times into seconds.
+          def parse_time_to_seconds(time_str: str):
+              if not time_str:
+                  return None
+              time_str = time_str.strip()
+              if not time_str or time_str in {"-", "N/A"}:
+                  return None
+              days = 0
+              rest = time_str
+              if "-" in rest:
+                  day_part, maybe_rest = rest.split("-", 1)
+                  if day_part.isdigit():
+                      days = int(day_part)
+                      rest = maybe_rest
+                  else:
+                      logger.warning("Unexpected day component %r in runtime value %r", day_part, time_str)
+                      return None
+              parts = rest.split(":")
+              if not all(part.isdigit() for part in parts):
+                  logger.warning("Non-numeric time component %r in runtime value %r", parts, time_str)
+                  return None
+              hours = minutes = seconds = 0
+              if len(parts) == 3:
+                  hours, minutes, seconds = map(int, parts)
+              elif len(parts) == 2:
+                  minutes, seconds = map(int, parts)
+              elif len(parts) == 1:
+                  seconds = int(parts[0])
+              else:
+                  logger.warning("Unexpected runtime format with %d components for value %r", len(parts), time_str)
+                  return None
+              if seconds >= 60:
+                  logger.warning("Out-of-range seconds in runtime value %r", time_str)
+              if len(parts) == 3 and minutes >= 60:
+                  logger.warning("Out-of-range minutes in runtime value %r", time_str)
+              return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
-                Returns ``None`` if the value cannot be parsed.
-                """
-                if not time_str:
-                    return None
+          def format_seconds(value: float) -> str:
+              total_seconds = int(round(value))
+              days, remainder = divmod(total_seconds, 86400)
+              hours, remainder = divmod(remainder, 3600)
+              minutes, seconds = divmod(remainder, 60)
+              if days > 0:
+                  return f"{days}-{hours:02d}:{minutes:02d}:{seconds:02d}"
+              if hours > 0:
+                  return f"{hours}:{minutes:02d}:{seconds:02d}"
+              return f"{minutes}:{seconds:02d}"
 
-                time_str = time_str.strip()
-                if not time_str or time_str in {"-", "N/A"}:
-                    return None
+          lines = Path("job_status.txt").read_text(encoding="utf-8").splitlines()
+          times = []
+          found_table = False
+          time_pattern = re.compile(r"^(?:\d+-)?\d{1,2}:\d{2}(?::\d{2})?$")
 
-                days = 0
-                rest = time_str
-                if "-" in rest:
-                    day_part, maybe_rest = rest.split("-", 1)
-                    if day_part.isdigit():
-                        days = int(day_part)
-                        rest = maybe_rest
-                    else:
-                        logger.warning("Unexpected day component %r in runtime value %r", day_part, time_str)
-                        return None
+          for idx, line in enumerate(lines):
+              if line.startswith("===== Detailed Job Table"):
+                  found_table = True
+                  pointer = idx + 1
+                  while pointer < len(lines) and not lines[pointer].strip():
+                      pointer += 1
+                  if pointer < len(lines):
+                      pointer += 1
+                  for row in lines[pointer:]:
+                      if row.startswith("====="):
+                          break
+                      if not row.strip():
+                          continue
+                      time_field = ""
+                      for token in row.split():
+                          if time_pattern.fullmatch(token):
+                              time_field = token
+                              break
+                      if not time_field:
+                          logger.debug("Skipping row without identifiable runtime token: %r", row)
+                          continue
+                      seconds = parse_time_to_seconds(time_field)
+                      if seconds is None:
+                          logger.warning("Unable to parse runtime value %r from row %r", time_field, row)
+                          continue
+                      if seconds > 0:
+                          times.append(seconds)
+                  break
 
-                parts = rest.split(":")
-                if not all(part.isdigit() for part in parts):
-                    logger.warning("Non-numeric time component %r in runtime value %r", parts, time_str)
-                    return None
+          if not found_table:
+              logger.error("Detailed Job Table section not found in job_status.txt; runtime stats unavailable.")
 
-                hours = minutes = seconds = 0
-                if len(parts) == 3:
-                    hours, minutes, seconds = map(int, parts)
-                elif len(parts) == 2:
-                    minutes, seconds = map(int, parts)
-                elif len(parts) == 1:
-                    seconds = int(parts[0])
-                else:
-                    logger.warning("Unexpected runtime format with %d components for value %r", len(parts), time_str)
-                    return None
-
-                if seconds >= 60:
-                    logger.warning("Out-of-range seconds in runtime value %r", time_str)
-                if len(parts) == 3 and minutes >= 60:
-                    logger.warning("Out-of-range minutes in runtime value %r", time_str)
-
-                return days * 86400 + hours * 3600 + minutes * 60 + seconds
-
-            def format_seconds(value: float) -> str:
-                total_seconds = int(round(value))
-                days, remainder = divmod(total_seconds, 86400)
-                hours, remainder = divmod(remainder, 3600)
-                minutes, seconds = divmod(remainder, 60)
-
-                if days > 0:
-                    return f"{days}-{hours:02d}:{minutes:02d}:{seconds:02d}"
-                if hours > 0:
-                    return f"{hours}:{minutes:02d}:{seconds:02d}"
-                return f"{minutes}:{seconds:02d}"
-
-            lines = Path("job_status.txt").read_text(encoding="utf-8").splitlines()
-            times = []
-            found_table = False
-
-            time_pattern = re.compile(r"^(?:\d+-)?\d{1,2}:\d{2}(?::\d{2})?$")
-
-            for idx, line in enumerate(lines):
-                if line.startswith("===== Detailed Job Table"):
-                    found_table = True
-                    pointer = idx + 1
-                    while pointer < len(lines) and not lines[pointer].strip():
-                        pointer += 1
-                    if pointer < len(lines):
-                        pointer += 1
-                    for row in lines[pointer:]:
-                        if row.startswith("====="):
-                            break
-                        if not row.strip():
-                            continue
-                        time_field = ""
-                        for token in row.split():
-                            if time_pattern.fullmatch(token):
-                                time_field = token
-                                break
-                        if not time_field:
-                            logger.debug("Skipping row without identifiable runtime token: %r", row)
-                            continue
-                        seconds = parse_time_to_seconds(time_field)
-                        if seconds is None:
-                            logger.warning("Unable to parse runtime value %r from row %r", time_field, row)
-                            continue
-                        if seconds > 0:
-                            times.append(seconds)
-                    break
-
-            if not found_table:
-                logger.error("Detailed Job Table section not found in job_status.txt; runtime stats unavailable.")
-
-            if times:
-                times.sort()
-                max_val = times[-1]
-                mean_val = sum(times) / len(times)
-                median_val = statistics.median(times)
-                print("|".join([
-                    format_seconds(max_val),
-                    format_seconds(mean_val),
-                    format_seconds(median_val),
-                ]))
-            else:
-                logger.info("No non-zero runtime durations were parsed from the job table.")
-          """))')
+          if times:
+              times.sort()
+              max_val = times[-1]
+              mean_val = sum(times) / len(times)
+              median_val = statistics.median(times)
+              print("|".join([
+                  format_seconds(max_val),
+                  format_seconds(mean_val),
+                  format_seconds(median_val),
+              ]))
+          else:
+              logger.info("No non-zero runtime durations were parsed from the job table.")
+          PY
+          )
           echo "runtime_stats $runtime_stats"
           runtime_max=""
           runtime_mean=""
