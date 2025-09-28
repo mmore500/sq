@@ -189,14 +189,28 @@ jobs:
           set -euo pipefail
           mkdir -p public
           runtime_stats=$(python3 -c 'from textwrap import dedent; exec(dedent("""
+            import logging
+            import re
             import statistics
             from pathlib import Path
 
 
-            def parse_time_to_seconds(time_str: str) -> int:
+            logging.basicConfig(level=logging.INFO, format="runtime_stats:%(levelname)s:%(message)s")
+            logger = logging.getLogger("runtime_stats")
+
+
+            def parse_time_to_seconds(time_str: str):
+                """Parse SLURM-style elapsed times into seconds.
+
+                Returns ``None`` if the value cannot be parsed.
+                """
+
+                if not time_str:
+                    return None
+
                 time_str = time_str.strip()
                 if not time_str or time_str in {"-", "N/A"}:
-                    return 0
+                    return None
 
                 days = 0
                 rest = time_str
@@ -205,22 +219,30 @@ jobs:
                     if day_part.isdigit():
                         days = int(day_part)
                         rest = maybe_rest
+                    else:
+                        logger.warning("Unexpected day component %r in runtime value %r", day_part, time_str)
+                        return None
 
                 parts = rest.split(":")
-                try:
-                    parts = [int(part) for part in parts]
-                except ValueError:
-                    return 0
+                if not all(part.isdigit() for part in parts):
+                    logger.warning("Non-numeric time component %r in runtime value %r", parts, time_str)
+                    return None
 
                 hours = minutes = seconds = 0
                 if len(parts) == 3:
-                    hours, minutes, seconds = parts
+                    hours, minutes, seconds = map(int, parts)
                 elif len(parts) == 2:
-                    minutes, seconds = parts
+                    minutes, seconds = map(int, parts)
                 elif len(parts) == 1:
-                    seconds = parts[0]
+                    seconds = int(parts[0])
                 else:
-                    return 0
+                    logger.warning("Unexpected runtime format with %d components for value %r", len(parts), time_str)
+                    return None
+
+                if seconds >= 60:
+                    logger.warning("Out-of-range seconds in runtime value %r", time_str)
+                if len(parts) == 3 and minutes >= 60:
+                    logger.warning("Out-of-range minutes in runtime value %r", time_str)
 
                 return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
@@ -240,9 +262,13 @@ jobs:
 
             lines = Path("job_status.txt").read_text(encoding="utf-8").splitlines()
             times = []
+            found_table = False
+
+            time_pattern = re.compile(r"^(?:\d+-)?\d{1,2}:\d{2}(?::\d{2})?$")
 
             for idx, line in enumerate(lines):
                 if line.startswith("===== Detailed Job Table"):
+                    found_table = True
                     pointer = idx + 1
                     while pointer < len(lines) and not lines[pointer].strip():
                         pointer += 1
@@ -253,14 +279,24 @@ jobs:
                             break
                         if not row.strip():
                             continue
-                        segment = row[143:] if len(row) > 143 else ""
-                        time_field = segment.split(None, 1)[0] if segment.strip() else ""
+                        time_field = ""
+                        for token in row.split():
+                            if time_pattern.fullmatch(token):
+                                time_field = token
+                                break
                         if not time_field:
+                            logger.debug("Skipping row without identifiable runtime token: %r", row)
                             continue
                         seconds = parse_time_to_seconds(time_field)
+                        if seconds is None:
+                            logger.warning("Unable to parse runtime value %r from row %r", time_field, row)
+                            continue
                         if seconds > 0:
                             times.append(seconds)
                     break
+
+            if not found_table:
+                logger.error("Detailed Job Table section not found in job_status.txt; runtime stats unavailable.")
 
             if times:
                 times.sort()
@@ -272,6 +308,8 @@ jobs:
                     format_seconds(mean_val),
                     format_seconds(median_val),
                 ]))
+            else:
+                logger.info("No non-zero runtime durations were parsed from the job table.")
             """))')
           echo "runtime_stats $runtime_stats"
           runtime_max=""
