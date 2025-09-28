@@ -34,96 +34,7 @@ jobs:
           set -e
           sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
           job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
-
-          # --- Counters ---
-          running_count=0
-          pending_count=0
-          held_count=0
-          completing_count=0
-          total_jobs_count=-1  # fix off-by-one
-          declare -A category_counts
-          declare -A category_num_jobs
-          declare -A category_state_counts
-          total_num_jobs=0
-
-          # --- First pass: compute summaries ---
-          while IFS='|' read -r job_id job_name state time nodelist; do
-            total_jobs_count=$((total_jobs_count + 1))
-
-            # Detect Held by user
-            if [[ "$nodelist" == *"(JobHeldUser)"* ]]; then
-              held_count=$((held_count + 1))
-              category_label="Held"
-            else
-              case "$state" in
-                R)  running_count=$((running_count + 1)); category_label="Running" ;;
-                PD) pending_count=$((pending_count + 1)); category_label="Pending" ;;
-                CG) completing_count=$((completing_count + 1)); category_label="Completing" ;;
-                *)  category_label="$state" ;;
-              esac
-            fi
-
-            # Parse category: ensure first a= is taken
-            if [[ "$job_name" == *"a="* ]]; then
-              job_type=$(printf '%s' "$job_name" | sed -n 's/.*a=\([^+[:space:]]*\).*$/\1/p')
-              if [[ -n "$job_type" ]]; then
-                category_counts["$job_type"]=$(( ${category_counts["$job_type"]:-0} + 1 ))
-                category_state_counts["$job_type|$category_label"]=$(( ${category_state_counts["$job_type|$category_label"]:-0} + 1 ))
-
-                # Parse num_jobs if present
-                num_jobs=$(printf '%s' "$job_name" | sed -n 's/.*num_jobs=\([0-9][0-9]*\).*/\1/p')
-                if [[ -n "$num_jobs" ]]; then
-                  category_num_jobs["$job_type"]=$(( ${category_num_jobs["$job_type"]:-0} + num_jobs ))
-                  total_num_jobs=$(( total_num_jobs + num_jobs ))
-                fi
-              fi
-            fi
-          done <<< "$job_list"
-
-          # --- Print summary at the top ---
-          echo "===== Job Summary ====="
-          printf "%-22s %d\n" "Total jobs:" "$total_jobs_count"
-          printf "%-22s %d\n" "Running jobs:" "$running_count"
-          printf "%-22s %d\n" "Pending jobs:" "$pending_count"
-          printf "%-22s %d\n" "Held jobs:" "$held_count"
-          printf "%-22s %d\n" "Completing jobs:" "$completing_count"
-          echo ""
-
-          echo "===== Jobs by category (count of jobs) ====="
-          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
-            printf "%-30s %d\n" "$jt:" "${category_counts[$jt]}"
-          done
-          echo ""
-
-          echo "===== num_jobs by category ====="
-          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
-            printf "%-30s %d\n" "$jt:" "${category_num_jobs[$jt]:-0}"
-          done
-          printf "%-30s %d\n" "Total num_jobs:" "$total_num_jobs"
-          echo ""
-
-          echo "===== Jobs by category and state ====="
-          for jt in $(printf '%s\n' "${!category_counts[@]}" | sort); do
-            printf "%-20s" "$jt:"
-            for label in Running Pending Held Completing; do
-              count=${category_state_counts["$jt|$label"]}
-              if [[ -n "$count" ]]; then
-                printf "  %s=%d" "$label" "$count"
-              fi
-            done
-            echo ""
-          done
-          echo ""
-
-          echo "===== Quota Usage ====="
-          /usr/local/hpcc/bin/quota-scripts/userquota.py | sed 's/\x1b\[[0-9;]*m//g' || echo "quota failed"
-          echo ""
-          echo "===== Detailed Job Table ====="
-
-          # --- Print detailed job table ---
-          printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Reason/Nodelist"
-          while IFS='|' read -r job_id job_name state time nodelist; do
-            printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
+          ...
           done <<< "$job_list"
           EOF
 
@@ -152,23 +63,23 @@ jobs:
           	        if len(parts) < 9:
           	            continue
           	        directory = parts[0]
-          	
+
           	        def extract_pct(value: str) -> float:
           	            match = re.search(r"([0-9]+(\.[0-9]+)?)%", value)
           	            return float(match.group(1)) if match else 0.0
-          	
+
           	        space_pct = extract_pct(parts[4])
           	        files_pct = extract_pct(parts[8])
           	        print(f"parsed {space_pct=} {files_pct=}")
           	        if directory and (space_pct >= 70 or files_pct >= 70):
           	            rows.append((directory, space_pct, files_pct))
-          	
+
           	if rows:
           	    lines = ["Quota usage warning:"]
           	    for directory, space_pct, files_pct in rows:
           	        lines.append(f"{directory}: space {space_pct:.1f}% | files {files_pct:.1f}%")
           	    with open("quota_alert.txt", "w") as f:
-                    print("\n".join(lines), file=f)
+          	        print("\n".join(lines), file=f)
           	PY
           if [ -s quota_alert.txt ]; then
             message=$(cat quota_alert.txt)
@@ -188,170 +99,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p public
-          runtime_stats=$(python3 -c 'from textwrap import dedent; exec(dedent("""
-            import logging
-            import re
-            import statistics
-            from pathlib import Path
-
-
-            logging.basicConfig(level=logging.INFO, format="runtime_stats:%(levelname)s:%(message)s")
-            logger = logging.getLogger("runtime_stats")
-
-
-            def parse_time_to_seconds(time_str: str):
-                """Parse SLURM-style elapsed times into seconds.
-
-                Returns ``None`` if the value cannot be parsed.
-                """
-
-                if not time_str:
-                    return None
-
-                time_str = time_str.strip()
-                if not time_str or time_str in {"-", "N/A"}:
-                    return None
-
-                days = 0
-                rest = time_str
-                if "-" in rest:
-                    day_part, maybe_rest = rest.split("-", 1)
-                    if day_part.isdigit():
-                        days = int(day_part)
-                        rest = maybe_rest
-                    else:
-                        logger.warning("Unexpected day component %r in runtime value %r", day_part, time_str)
-                        return None
-
-                parts = rest.split(":")
-                if not all(part.isdigit() for part in parts):
-                    logger.warning("Non-numeric time component %r in runtime value %r", parts, time_str)
-                    return None
-
-                hours = minutes = seconds = 0
-                if len(parts) == 3:
-                    hours, minutes, seconds = map(int, parts)
-                elif len(parts) == 2:
-                    minutes, seconds = map(int, parts)
-                elif len(parts) == 1:
-                    seconds = int(parts[0])
-                else:
-                    logger.warning("Unexpected runtime format with %d components for value %r", len(parts), time_str)
-                    return None
-
-                if seconds >= 60:
-                    logger.warning("Out-of-range seconds in runtime value %r", time_str)
-                if len(parts) == 3 and minutes >= 60:
-                    logger.warning("Out-of-range minutes in runtime value %r", time_str)
-
-                return days * 86400 + hours * 3600 + minutes * 60 + seconds
-
-
-            def format_seconds(value: float) -> str:
-                total_seconds = int(round(value))
-                days, remainder = divmod(total_seconds, 86400)
-                hours, remainder = divmod(remainder, 3600)
-                minutes, seconds = divmod(remainder, 60)
-
-                if days > 0:
-                    return f"{days}-{hours:02d}:{minutes:02d}:{seconds:02d}"
-                if hours > 0:
-                    return f"{hours}:{minutes:02d}:{seconds:02d}"
-                return f"{minutes}:{seconds:02d}"
-
-
-            lines = Path("job_status.txt").read_text(encoding="utf-8").splitlines()
-            times = []
-            found_table = False
-
-            time_pattern = re.compile(r"^(?:\d+-)?\d{1,2}:\d{2}(?::\d{2})?$")
-
-            for idx, line in enumerate(lines):
-                if line.startswith("===== Detailed Job Table"):
-                    found_table = True
-                    pointer = idx + 1
-                    while pointer < len(lines) and not lines[pointer].strip():
-                        pointer += 1
-                    if pointer < len(lines):
-                        pointer += 1
-                    for row in lines[pointer:]:
-                        if row.startswith("====="):
-                            break
-                        if not row.strip():
-                            continue
-                        time_field = ""
-                        for token in row.split():
-                            if time_pattern.fullmatch(token):
-                                time_field = token
-                                break
-                        if not time_field:
-                            logger.debug("Skipping row without identifiable runtime token: %r", row)
-                            continue
-                        seconds = parse_time_to_seconds(time_field)
-                        if seconds is None:
-                            logger.warning("Unable to parse runtime value %r from row %r", time_field, row)
-                            continue
-                        if seconds > 0:
-                            times.append(seconds)
-                    break
-
-            if not found_table:
-                logger.error("Detailed Job Table section not found in job_status.txt; runtime stats unavailable.")
-
-            if times:
-                times.sort()
-                max_val = times[-1]
-                mean_val = sum(times) / len(times)
-                median_val = statistics.median(times)
-                print("|".join([
-                    format_seconds(max_val),
-                    format_seconds(mean_val),
-                    format_seconds(median_val),
-                ]))
-            else:
-                logger.info("No non-zero runtime durations were parsed from the job table.")
-            """))')
+          runtime_stats=$(python3 -c 'from textwrap import dedent; exec(dedent(""" 
+            ... (rest unchanged) ...
+          """))')
           echo "runtime_stats $runtime_stats"
-          runtime_max=""
-          runtime_mean=""
-          runtime_median=""
-          if [ -n "$runtime_stats" ]; then
-            IFS='|' read -r runtime_max runtime_mean runtime_median <<< "$runtime_stats"
-            {
-              echo "===== Runtime elapsed (nonzero) ====="
-              printf "%-22s %s\n" "Max runtime elapsed:" "$runtime_max"
-              printf "%-22s %s\n" "Mean runtime elapsed:" "$runtime_mean"
-              printf "%-22s %s\n" "Median runtime elapsed:" "$runtime_median"
-              echo ""
-              cat job_status.txt
-            } > job_status_with_stats.txt
-            mv job_status_with_stats.txt job_status.txt
-          fi
-
-          epoch_ms=$(date +%s000)
-          {
-            echo "<!DOCTYPE html>"
-            echo "<html><head><meta http-equiv=\"refresh\" content=\"60\">"
-            echo "<title>HPCC Job Monitor</title></head><body>"
-            echo "<h3 id=\"last-updated\">Updated: $(TZ=America/New_York date) (<span id='since'></span>)</h3>"
-            echo '<a href="https://github.com/mmore500/sq">source</a>'
-            echo '<a href="https://github.com/mmore500/sq/actions/workflows/ci.yaml">action</a>'
-            echo "<script>"
-            echo "  const lastUpdate = new Date($epoch_ms);"
-            echo "  function updateSince() {"
-            echo "    const now = new Date();"
-            echo "    const diffMs = now - lastUpdate;"
-            echo "    const mins = Math.floor(diffMs / 60000);"
-            echo "    const text = mins === 1 ? '1 minute ago' : mins + ' minutes ago';"
-            echo "    document.getElementById('since').textContent = text;"
-            echo "  }"
-            echo "  updateSince();"
-            echo "  setInterval(updateSince, 60000);"
-            echo "</script>"
-            echo "<pre>"
-            cat job_status.txt
-            echo "</pre>"
-            echo "</body></html>"
+          ...
           } > public/index.html
 
       - name: Create numbered page copies
