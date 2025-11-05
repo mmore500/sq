@@ -131,9 +131,9 @@ jobs:
           echo "===== \$HOME/work Contents ====="
           if [ -d "$HOME/work" ]; then
             echo "Listing contents of $HOME/work"
-            ls -l "$HOME/work"
+            ls -1 "$HOME/work"
             echo ""
-            echo "Total files in $WORK_DIR $(ls -1 "$HOME/work" | wc -l)"
+            echo "Num files $(ls -1 "$HOME/work" | wc -l)"
           else
             echo "Directory $HOME/work does not exist."
           fi
