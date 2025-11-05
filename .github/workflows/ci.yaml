@@ -128,6 +128,18 @@ jobs:
           done
           echo ""
 
+          echo '===== ${HOME}/work Contents ====='
+          WORK_DIR="${HOME}/work"
+          if [ -d "$WORK_DIR" ]; then
+            echo "Listing contents of ${WORK_DIR}:"
+            ls -l "$WORK_DIR"
+            echo ""
+            echo "Total files in ${WORK_DIR}: $(ls -1 "${WORK_DIR}" | wc -l)"
+          else
+            echo "Directory ${WORK_DIR} does not exist."
+          fi
+          echo ""
+
           echo "===== Quota Usage ====="
           /usr/local/hpcc/bin/quota-scripts/userquota.py | sed 's/\x1b\[[0-9;]*m//g' || echo "quota failed"
           echo ""
