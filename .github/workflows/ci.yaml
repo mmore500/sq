@@ -54,6 +54,10 @@ jobs:
           echo "squeue --version: $(squeue --version 2>&1 || echo 'failed')"
           echo "raw squeue --me (first lines, stderr included):"
           squeue --me -o "%i|%j|%t|%M|%R" 2>&1 | head -n 5
+          echo "local cluster total jobs: $(squeue -h -o '%i' 2>&1 | wc -l)"
+          echo "known clusters: $(sacctmgr -n show cluster format=Cluster 2>&1 | tr '\n' ' ')"
+          echo "all-cluster squeue --me (federation):"
+          squeue -M all --me -o "%i|%j|%t|%M|%R" 2>&1 | head -n 10
           echo "================="
 
           job_list=$(squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%R" 2>>squeue_err.txt)
