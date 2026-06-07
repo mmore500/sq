@@ -186,6 +186,8 @@ jobs:
                   if len(parts) < 9:
                       continue
                   directory = parts[0]
+                  if directory == "devolab":  # excluded from quota warnings
+                      continue
 
                   def extract_pct(value: str) -> float:
                       match = re.search(r"([0-9]+(\.[0-9]+)?)%", value)
