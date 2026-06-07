@@ -60,7 +60,7 @@ jobs:
           pending_count=0
           held_count=0
           completing_count=0
-          total_jobs_count=-1  # fix off-by-one
+          total_jobs_count=0
           declare -A category_counts
           declare -A category_num_jobs
           declare -A category_state_counts
@@ -68,6 +68,7 @@ jobs:
 
           # --- First pass: compute summaries ---
           while IFS='|' read -r job_id job_name state time timelimit nodelist; do
+            [[ -z "$job_id" ]] && continue  # skip the trailing here-string newline
             total_jobs_count=$((total_jobs_count + 1))
 
             # Detect Held by user
@@ -155,6 +156,7 @@ jobs:
           # --- Print detailed job table ---
           printf "\n%-10s %-120s %-10s %-10s %-12s %-30s\n" "JobID" "JobName" "State" "Time" "TimeLimit" "Reason/Nodelist"
           while IFS='|' read -r job_id job_name state time timelimit nodelist; do
+            [[ -z "$job_id" ]] && continue
             printf "%-10s %-120s %-10s %-10s %-12s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$timelimit" "$nodelist"
           done <<< "$job_list"
           EOF
