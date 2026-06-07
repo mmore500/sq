@@ -45,7 +45,23 @@ jobs:
         run: |
           set -e
           sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
-          job_list=$(squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%R")
+          # --- Diagnostics: surface why the job list may be empty ---
+          echo "===== Debug ====="
+          echo "whoami: $(whoami 2>&1)"
+          echo "id -un: $(id -un 2>&1)"
+          echo "hostname: $(hostname 2>&1)"
+          echo "squeue path: $(command -v squeue 2>&1 || echo 'NOT FOUND')"
+          echo "squeue --version: $(squeue --version 2>&1 || echo 'failed')"
+          echo "raw squeue --me (first lines, stderr included):"
+          squeue --me -o "%i|%j|%t|%M|%R" 2>&1 | head -n 5
+          echo "================="
+
+          job_list=$(squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%R" 2>>squeue_err.txt)
+          if [ -s squeue_err.txt ]; then
+            echo "===== squeue stderr ====="
+            cat squeue_err.txt
+            echo "========================="
+          fi
 
           # --- Counters ---
           running_count=0
