@@ -45,7 +45,7 @@ jobs:
         run: |
           set -e
           sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
-          job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
+          job_list=$(squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%R")
 
           # --- Counters ---
           running_count=0
