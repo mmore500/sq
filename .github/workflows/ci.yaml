@@ -53,6 +53,7 @@ jobs:
           echo "squeue path: $(command -v squeue 2>&1 || echo 'NOT FOUND')"
           echo "squeue --version: $(squeue --version 2>&1 || echo 'failed')"
           # NOTE: inner ssh MUST use -n so it does not eat this heredoc's stdin.
+          echo "dmz LOGIN-shell myjobs: $(bash -lc 'squeue -h -u mmore500 2>/dev/null | wc -l')"
           echo "dmz SlurmctldHost: $(scontrol show config 2>/dev/null | grep -i -m1 SlurmctldHost)"
           echo "dmz my jobs: $(squeue -h -u "$(id -un)" -o '%i' 2>&1 | wc -l)  total: $(squeue -h -o '%i' 2>&1 | wc -l)"
           echo "--- dev-amd20 NON-login (ssh -n) ---"
