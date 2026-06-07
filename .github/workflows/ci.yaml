@@ -48,7 +48,7 @@ jobs:
           # squeue must run in a login shell: the HPCC login profile sets up the
           # Slurm environment (SLURM_CONF etc.). A plain non-login 'ssh host bash'
           # talks to the controller but resolves zero jobs for the user.
-          job_list=$(bash -lc 'squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%R"' 2>>squeue_err.txt)
+          job_list=$(bash -lc 'squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%l|%R"' 2>>squeue_err.txt)
           if [ -s squeue_err.txt ]; then
             echo "===== squeue stderr ====="
             cat squeue_err.txt
@@ -67,7 +67,7 @@ jobs:
           total_num_jobs=0
 
           # --- First pass: compute summaries ---
-          while IFS='|' read -r job_id job_name state time nodelist; do
+          while IFS='|' read -r job_id job_name state time timelimit nodelist; do
             total_jobs_count=$((total_jobs_count + 1))
 
             # Detect Held by user
@@ -153,9 +153,9 @@ jobs:
           echo "===== Detailed Job Table ====="
 
           # --- Print detailed job table ---
-          printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Reason/Nodelist"
-          while IFS='|' read -r job_id job_name state time nodelist; do
-            printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
+          printf "\n%-10s %-120s %-10s %-10s %-12s %-30s\n" "JobID" "JobName" "State" "Time" "TimeLimit" "Reason/Nodelist"
+          while IFS='|' read -r job_id job_name state time timelimit nodelist; do
+            printf "%-10s %-120s %-10s %-10s %-12s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$timelimit" "$nodelist"
           done <<< "$job_list"
           EOF
 
