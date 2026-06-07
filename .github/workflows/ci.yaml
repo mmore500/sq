@@ -45,21 +45,30 @@ jobs:
         run: |
           set -e
           sshpass -p "${{ secrets.PASSWORD }}" ssh -o StrictHostKeyChecking=no "${{ secrets.USER }}@hpcc.msu.edu" 'bash -s' <<'EOF' | tee job_status.txt
-          job_list=$(squeue --noheader -u "$USER" -o "%i|%j|%t|%M|%R")
+          # squeue must run in a login shell: the HPCC login profile sets up the
+          # Slurm environment (SLURM_CONF etc.). A plain non-login 'ssh host bash'
+          # talks to the controller but resolves zero jobs for the user.
+          job_list=$(bash -lc 'squeue --noheader -u "$(id -un)" -o "%i|%j|%t|%M|%l|%R"' 2>>squeue_err.txt)
+          if [ -s squeue_err.txt ]; then
+            echo "===== squeue stderr ====="
+            cat squeue_err.txt
+            echo "========================="
+          fi
 
           # --- Counters ---
           running_count=0
           pending_count=0
           held_count=0
           completing_count=0
-          total_jobs_count=-1  # fix off-by-one
+          total_jobs_count=0
           declare -A category_counts
           declare -A category_num_jobs
           declare -A category_state_counts
           total_num_jobs=0
 
           # --- First pass: compute summaries ---
-          while IFS='|' read -r job_id job_name state time nodelist; do
+          while IFS='|' read -r job_id job_name state time timelimit nodelist; do
+            [[ -z "$job_id" ]] && continue  # skip the trailing here-string newline
             total_jobs_count=$((total_jobs_count + 1))
 
             # Detect Held by user
@@ -145,9 +154,10 @@ jobs:
           echo "===== Detailed Job Table ====="
 
           # --- Print detailed job table ---
-          printf "\n%-10s %-120s %-10s %-10s %-30s\n" "JobID" "JobName" "State" "Time" "Reason/Nodelist"
-          while IFS='|' read -r job_id job_name state time nodelist; do
-            printf "%-10s %-120s %-10s %-10s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$nodelist"
+          printf "\n%-10s %-120s %-10s %-10s %-12s %-30s\n" "JobID" "JobName" "State" "Time" "TimeLimit" "Reason/Nodelist"
+          while IFS='|' read -r job_id job_name state time timelimit nodelist; do
+            [[ -z "$job_id" ]] && continue
+            printf "%-10s %-120s %-10s %-10s %-12s %-30s\n" "$job_id" "$job_name" "$state" "$time" "$timelimit" "$nodelist"
           done <<< "$job_list"
           EOF
 
@@ -176,6 +186,8 @@ jobs:
                   if len(parts) < 9:
                       continue
                   directory = parts[0]
+                  if directory == "devolab":  # excluded from quota warnings
+                      continue
 
                   def extract_pct(value: str) -> float:
                       match = re.search(r"([0-9]+(\.[0-9]+)?)%", value)
@@ -184,7 +196,7 @@ jobs:
                   space_pct = extract_pct(parts[4])
                   files_pct = extract_pct(parts[8])
                   print(f"parsed {space_pct=} {files_pct=}")
-                  if directory and (space_pct >= 70 or files_pct >= 75):
+                  if directory and (space_pct >= 80 or files_pct >= 80):
                       rows.append((directory, space_pct, files_pct))
 
           if rows:
@@ -375,7 +387,6 @@ jobs:
           path: ./public
 
   deploy:
-    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
